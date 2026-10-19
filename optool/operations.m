@@ -513,7 +513,12 @@ BOOL insertLoadEntryIntoBinary(NSString *dylibPath, NSMutableData *binary, struc
     // so we don't want to append new bytes to the binary (that would break the executable
     // since everything is offset-based–we'd have to go in and adjust every offset)
     // So instead take advantage of the huge amount of padding after the load commands
-    if (strcmp([occupant bytes], "\0")) {
+    const uint8_t *paddingBytes = occupant.bytes;
+    BOOL paddingIsEmpty = YES;
+    for (NSUInteger index = 0; index < occupant.length; ++index) {
+        if (paddingBytes[index] != 0) { paddingIsEmpty = NO; break; }
+    }
+    if (!paddingIsEmpty) {
         NSLog(@"cannot inject payload into %s because there is no room", dylibPath.fileSystemRepresentation);
         return NO;
     }
@@ -530,11 +535,10 @@ BOOL insertLoadEntryIntoBinary(NSString *dylibPath, NSMutableData *binary, struc
     command.dylib = dylib;
     command.cmdsize = length + padding;
     
-    unsigned int zeroByte = 0;
     NSMutableData *commandData = [NSMutableData data];
     [commandData appendBytes:&command length:sizeof(struct dylib_command)];
     [commandData appendData:[dylibPath dataUsingEncoding:NSASCIIStringEncoding]];
-    [commandData appendBytes:&zeroByte length:padding];
+    [commandData increaseLengthBy:padding];
     
     // remove enough null bytes to account of our inserted data
     [binary replaceBytesInRange:NSMakeRange(macho.offset + macho.header.sizeofcmds + macho.size, commandData.length)
